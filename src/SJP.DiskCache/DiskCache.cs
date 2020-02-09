@@ -63,16 +63,11 @@ namespace SJP.DiskCache
             PollingInterval = interval;
             KeyComparer = keyComparer ?? EqualityComparer<TKey>.Default;
 
-            //_entryLookup = new ConcurrentDictionary<TKey, ICacheEntry<TKey>>();
+            // Database storage
+            if (!Directory.Exists("dbs")) Directory.CreateDirectory("dbs");
+
             _entryLookup = new PersistentDictionary<TKey, CacheEntry<TKey>>("dbs/chunkCache", "entryLookup");
-
-            Console.WriteLine("BOOP!");
             _fileLookup = new PersistentDictionary<TKey, FileEntry<TKey>>("dbs/chunkCache", "fileLookup");
-
-            //_fileLookup = new PersistentDictionary<TKey, string>("chunkCache", "entryLookup");
-            
-
-            //Clear();
 
             Task.Run(async () =>
             {
@@ -635,7 +630,6 @@ namespace SJP.DiskCache
                 return;
 
             _cts.Cancel();
-            //Clear();
             _disposed = true;
         }
 
@@ -700,10 +694,8 @@ namespace SJP.DiskCache
         private bool _disposed;
 
         private readonly CancellationTokenSource _cts = new CancellationTokenSource();
-        //private readonly ConcurrentDictionary<TKey, ICacheEntry<TKey>> _entryLookup;
         private readonly PersistentDictionary<TKey, CacheEntry<TKey>> _entryLookup;
         private readonly PersistentDictionary<TKey, FileEntry<TKey>> _fileLookup;
-        //private readonly PersistentDictionary<TKey, string> _fileLookup;
 
         private readonly static bool _isValueType = typeof(TKey).IsValueType;
 
