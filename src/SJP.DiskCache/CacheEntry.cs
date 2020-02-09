@@ -29,34 +29,50 @@ namespace SJP.DiskCache
             // using a stopwatch instead of a raw datetime.
             // the reason for this is to handle changes in system time and time zone
             // without reporting incorrect values.
-            _lastAccessedTimer = new Stopwatch();
-            _lastAccessedTimer.Start();
+            //_lastAccessedTimer = new Stopwatch();
+            //_lastAccessedTimer.Start();
+
+        }
+
+
+        /// <summary>
+        /// Persistent Dictionary required constructor
+        /// </summary>
+        public CacheEntry()
+        {
+
         }
 
         /// <summary>
         /// The key that the entry represents when looking up in the cache.
         /// </summary>
-        public TKey Key { get; }
+        public TKey Key { get; set; }
 
         /// <summary>
         /// The size of the data that the cache entry is associated with.
         /// </summary>
-        public ulong Size { get; }
+        public ulong Size { get; set; }
+
 
         /// <summary>
         /// The last time at which the entry was retrieved from the cache.
         /// </summary>
-        public DateTime LastAccessed => DateTime.Now - TimeSpan.FromTicks(_lastAccessedTimer.ElapsedTicks);
+        public DateTime LastAccessed { get; set; } = DateTime.Now;
+
 
         /// <summary>
         /// When the cache entry was created.
         /// </summary>
-        public DateTime CreationTime { get; } = DateTime.Now;
+        public DateTime CreationTime { get; set; } = DateTime.Now;
 
         /// <summary>
         /// The number of times that the cache entry has been accessed.
         /// </summary>
-        public ulong AccessCount => Convert.ToUInt64(_accessCount);
+        public ulong AccessCount
+        {
+            get { return Convert.ToUInt64(_accessCount); }
+            set { _accessCount = Convert.ToInt64(value); }
+        }
 
         /// <summary>
         /// Refreshes the cache entry, primarily to acknowledge an access. Increments access count and restarts access timer.
@@ -64,13 +80,14 @@ namespace SJP.DiskCache
         public void Refresh()
         {
             Interlocked.Increment(ref _accessCount);
-            _lastAccessedTimer.Restart();
+            //_lastAccessedTimer.Restart();
+            LastAccessed = DateTime.Now;
         }
 
         private static bool IsNull(TKey key) => !_isValueType && EqualityComparer<TKey>.Default.Equals(key, default(TKey));
 
         private long _accessCount;
-        private readonly Stopwatch _lastAccessedTimer;
+        //private readonly Stopwatch _lastAccessedTimer;
 
         private readonly static bool _isValueType = typeof(TKey).IsValueType;
     }

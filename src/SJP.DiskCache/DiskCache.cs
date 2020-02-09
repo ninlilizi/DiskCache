@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,7 +6,6 @@ using System.Security.Cryptography;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
-
 using SJP.Sherlock;
 
 namespace SJP.DiskCache
@@ -65,10 +63,16 @@ namespace SJP.DiskCache
             PollingInterval = interval;
             KeyComparer = keyComparer ?? EqualityComparer<TKey>.Default;
 
-            _entryLookup = new ConcurrentDictionary<TKey, ICacheEntry<TKey>>(KeyComparer);
-            _fileLookup = new ConcurrentDictionary<TKey, string>(KeyComparer);
+            //_entryLookup = new ConcurrentDictionary<TKey, ICacheEntry<TKey>>();
+            _entryLookup = new PersistentDictionary<TKey, CacheEntry<TKey>>("dbs/chunkCache", "entryLookup");
 
-            Clear();
+            Console.WriteLine("BOOP!");
+            _fileLookup = new PersistentDictionary<TKey, FileEntry<TKey>>("dbs/chunkCache", "fileLookup");
+
+            //_fileLookup = new PersistentDictionary<TKey, string>("chunkCache", "entryLookup");
+            
+
+            //Clear();
 
             Task.Run(async () =>
             {
@@ -127,13 +131,28 @@ namespace SJP.DiskCache
         {
             while (!_entryLookup.IsEmpty)
             {
-                foreach (var entry in _entryLookup)
+                foreach (var entry in _entryLookup.ToList())
                 {
-                    var fileInfo = new FileInfo(_fileLookup[entry.Key]);
-                    if (fileInfo.IsFileLocked())
-                        continue;
+                    var fileInfo = new FileInfo(_fileLookup[entry.Key].Name);
+                    if (fileInfo.Exists)
+                    {
+                        try
+                        {
+                            //if (fileInfo.IsFileLocked()) Console.WriteLine("Attempt to delete locked file: " + fileInfo);
+                            //   continue;
 
-                    File.Delete(_fileLookup[entry.Key]);
+                            File.Delete(_fileLookup[entry.Key].Name);
+                        }
+                        catch (Exception e)
+                        {
+                            //Console.WriteLine("EXCEPTION Testing for file lock: " + fileInfo);
+                            Console.WriteLine("EXCEPTION  filename: " + fileInfo);
+                            Console.WriteLine("EXCEPTION          : " + e);
+                        }
+
+
+                        
+                    }
                     _entryLookup.TryRemove(entry.Key, out var lookupEntry);
                     EntryRemoved?.Invoke(this, lookupEntry);
                 }
@@ -161,11 +180,11 @@ namespace SJP.DiskCache
             {
                 foreach (var entry in _entryLookup)
                 {
-                    var fileInfo = new FileInfo(_fileLookup[entry.Key]);
+                    var fileInfo = new FileInfo(_fileLookup[entry.Key].Name);
                     if (fileInfo.IsFileLocked())
                         continue;
 
-                    File.Delete(_fileLookup[entry.Key]);
+                    File.Delete(_fileLookup[entry.Key].Name);
                     _entryLookup.TryRemove(entry.Key, out var lookupEntry);
                     EntryRemoved?.Invoke(this, lookupEntry);
                 }
@@ -225,7 +244,7 @@ namespace SJP.DiskCache
             if (!ContainsKey(key))
                 throw new KeyNotFoundException($"Could not find a value for the key '{ key }'");
 
-            var path = _fileLookup[key];
+            var path = _fileLookup[key].Name;
             if (!File.Exists(path))
                 throw new FileNotFoundException($"Expected to find a path at the path '{ path }', but it does not exist.", path);
 
@@ -379,7 +398,7 @@ namespace SJP.DiskCache
             File.Move(tmpFileName, cachePath);
             var cacheFileInfo = new FileInfo(cachePath);
 
-            _fileLookup[key] = cachePath;
+            _fileLookup[key] = new FileEntry<TKey>(key, cachePath);  //cachePath;
             var cacheEntry = new CacheEntry<TKey>(key, Convert.ToUInt64(cacheFileInfo.Length));
             _entryLookup[key] = cacheEntry;
 
@@ -526,7 +545,7 @@ namespace SJP.DiskCache
             File.Move(tmpFileName, cachePath);
             var cacheFileInfo = new FileInfo(cachePath);
 
-            _fileLookup[key] = cachePath;
+            _fileLookup[key] = new FileEntry<TKey>(key, cachePath);  //cachePath;
             var cacheEntry = new CacheEntry<TKey>(key, Convert.ToUInt64(cacheFileInfo.Length));
             _entryLookup[key] = cacheEntry;
 
@@ -616,7 +635,7 @@ namespace SJP.DiskCache
                 return;
 
             _cts.Cancel();
-            Clear();
+            //Clear();
             _disposed = true;
         }
 
@@ -629,7 +648,7 @@ namespace SJP.DiskCache
             foreach (var expiredEntry in expiredEntries)
             {
                 var key = expiredEntry.Key;
-                var filePath = _fileLookup[key];
+                var filePath = _fileLookup[key].Name;
                 var fileInfo = new FileInfo(filePath);
                 if (fileInfo.IsFileLocked())
                     continue;
@@ -681,8 +700,10 @@ namespace SJP.DiskCache
         private bool _disposed;
 
         private readonly CancellationTokenSource _cts = new CancellationTokenSource();
-        private readonly ConcurrentDictionary<TKey, ICacheEntry<TKey>> _entryLookup;
-        private readonly ConcurrentDictionary<TKey, string> _fileLookup;
+        //private readonly ConcurrentDictionary<TKey, ICacheEntry<TKey>> _entryLookup;
+        private readonly PersistentDictionary<TKey, CacheEntry<TKey>> _entryLookup;
+        private readonly PersistentDictionary<TKey, FileEntry<TKey>> _fileLookup;
+        //private readonly PersistentDictionary<TKey, string> _fileLookup;
 
         private readonly static bool _isValueType = typeof(TKey).IsValueType;
 
@@ -702,4 +723,36 @@ namespace SJP.DiskCache
             DataTooLarge
         }
     }
+
+#pragma warning disable 1591
+    public class FileName
+    {
+        private string _fileName;
+
+        public FileName(string fileName)
+        {
+            _fileName = fileName;
+            Length = fileName.Length;
+        }
+
+        public readonly string Name = "FileName";
+        public int Length;
+
+        public static implicit operator FileName(string fileName)
+        {
+            // While not technically a requirement; see below why this is done.
+            if (fileName == null)
+                return null;
+
+            return new FileName(fileName);
+        }
+
+        public override string ToString()
+        {
+            return _fileName;
+        }
+
+    }
+#pragma warning restore 1591
+
 }
