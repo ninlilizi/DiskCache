@@ -91,7 +91,10 @@ var flacFilePath = @"C:\tmp\flac\example.flac";
 Stream mp3FileStream = diskCache.GetValue(@"C:\tmp\flac\example.flac");
 ```
 
-The resulting stream will be an `MP3` stream that was transcoded from the `FLAC` file that is referred to in the `flacFilePath` variable.
+#### `bool TryRemove(T key)`
+
+We can try to remove an entry. return value denotes if the operation was successful
+
 
 ### `ICachePolicy<T>`
 
